@@ -234,6 +234,7 @@ function nextTurn(){
   turn=fallback!==undefined?fallback:active[0];
 }
 function showCurrent(){
+  if(!current||!players.length||!players[turn])return;
   document.getElementById('price').textContent=price+' 元';
   document.getElementById('holder').textContent=holder>=0?`目前暫時由：${players[holder].name} 持有`:'目前暫時由：尚未有人持有';
   document.getElementById('turn').textContent=players[turn].chars.length>=5?`${players[turn].name} 已滿 5 名，不能出價`:players[turn].money<=0?`${players[turn].name} 剩餘 0 元，只能 PASS`:`現在輪到：${players[turn].name}`;
@@ -580,7 +581,7 @@ function runBattles(){
     if($('joinRoomBtn'))$('joinRoomBtn').disabled=MP.host||MP.guest;
   }
   function snapshot(){
-    return {type:'state',seq:++MP.stateSeq,started:MP.started,players:players.map(p=>({name:p.name,money:p.money,chars:p.chars.map(c=>c.name)})),deck:deck.map(c=>c.name),current:current?current.name:null,price,holder,firstBid,passed:[...passed],turn,round,log,gameOver,noBidTurns,autoAssigning,battleHTML:$('battles')?.innerHTML||'',battleBtnHidden:$('battleBtn')?.classList.contains('hidden'),battleBtnDisabled:$('battleBtn')?.disabled};
+    return {type:'state',seq:++MP.stateSeq,started:MP.started,players:players.map(p=>({name:p.name,money:p.money,chars:p.chars.map(c=>c.name)})),deck:deck.map(c=>c.name),current:current?{name:current.name,img:current.img}:null,price,holder,firstBid,passed:[...passed],turn,round,log,gameOver,noBidTurns,autoAssigning,battleHTML:$('battles')?.innerHTML||'',battleBtnHidden:$('battleBtn')?.classList.contains('hidden'),battleBtnDisabled:$('battleBtn')?.disabled};
   }
   function send(c,m){try{if(c&&c.open)c.send(m)}catch(e){}}
   function broadcast(){
@@ -599,7 +600,7 @@ function runBattles(){
     MP.lastStateSeq=st.seq;
     players=(st.players||[]).map(p=>({name:p.name,money:p.money,chars:(p.chars||[]).map(n=>characters.find(c=>c.name===n)||{name:n,img:''})}));
     deck=(st.deck||[]).map(n=>characters.find(c=>c.name===n)).filter(Boolean);
-    current=st.current?characters.find(c=>c.name===st.current)||null:null;
+    current=st.current?(typeof st.current==='string'?(characters.find(c=>c.name===st.current)||null):(characters.find(c=>c.name===st.current.name)||{name:st.current.name,img:st.current.img||''})):null;
     price=Number(st.price)||0; holder=st.holder??-1; firstBid=!!st.firstBid; passed=new Set(st.passed||[]);
     turn=Number(st.turn)||0; round=Number(st.round)||1; log=st.log||[]; gameOver=!!st.gameOver; noBidTurns=Number(st.noBidTurns)||0; autoAssigning=!!st.autoAssigning;
     MP.started=!!st.started;
@@ -650,7 +651,8 @@ function runBattles(){
             status(`玩家 ${n} 已加入（${players.length}/${target}），等待其他玩家加入。`);
           }
         }else if(m.type==='requestState'){
-          broadcast();
+          send(c,snapshot());
+          return;
         }else if(m.type==='action'){
           if(m.id){
             if(MP.seenActions.has(m.id))return;
@@ -678,7 +680,7 @@ function runBattles(){
       MP.conn.on('open',()=>{send(MP.conn,{type:'join',name:n});status(`已加入房間 ${r}，等待正式同步。`);});
       MP.conn.on('data',m=>{
         if(m.type==='error'){alert(m.message);return;}
-        if(m.type==='joined'){status(`已加入房間 ${r}，你的角色是 ${m.name}。`);return;}
+        if(m.type==='joined'){status(`已加入房間 ${r}，你的角色是 ${m.name}。`);setTimeout(()=>send(MP.conn,{type:'requestState'}),50);return;}
         if(m.type==='state')applyState(m);
       });
       MP.conn.on('close',()=>status('與房主的連線已中斷。'));
