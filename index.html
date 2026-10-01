@@ -246,8 +246,6 @@ function showCurrent(){
   document.getElementById('passBtn').disabled=autoAssigning || players[turn].chars.length>=5;
   document.getElementById('addAmount').value=(!firstBid&&price===0)?1:Math.min(0,max);
   document.getElementById('ruleHint').textContent=autoAssigning?`目前為兩人局的剩餘角色展示：${players[turn].name} 已自動取得這隻角色，不需支付資金。`:players[turn].chars.length>=5?'此玩家已經 5/5，不能出價；系統會讓其他未滿 5 名玩家繼續競標。':players[turn].money<=0?'此玩家剩餘 0 元，可以 PASS；PASS 後由下一位玩家繼續。':((!firstBid&&price===0)?'你是第一個出價者，至少要加 1 元。':'你可以加 0 元跟價；目前持有人不能對自己 +0。');
-  renderPlayers();
-  renderFunds();
 }
 function renderPlayers(){
   const board=document.getElementById('players');
