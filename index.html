@@ -192,6 +192,10 @@ const combatProfiles = {
 };
 let players=[], deck=[], current=null, price=0, holder=-1, firstBid=false, passed=new Set(), turn=0, round=1, log=[], gameOver=false, noBidTurns=0, autoAssigning=false;
 
+function renderLog(){
+  const el=document.getElementById('log');
+  if(el) el.innerHTML=(log||[]).map(x=>`<div>${x}</div>`).join('');
+}
 function renderNames(){
   const n=+document.getElementById('playerCount').value;
   document.getElementById('names').innerHTML=Array.from({length:n},(_,i)=>`<div class="setupItem"><b>玩家${String.fromCharCode(65+i)}</b><input id="p${i}" value="玩家${String.fromCharCode(65+i)}"></div>`).join('');
@@ -681,7 +685,7 @@ function runBattles(){
       MP.conn.on('data',m=>{
         if(m.type==='error'){alert(m.message);return;}
         if(m.type==='joined'){status(`已加入房間 ${r}，你的角色是 ${m.name}。`);setTimeout(()=>send(MP.conn,{type:'requestState'}),50);return;}
-        if(m.type==='state')applyState(m);
+        if(m.type==='state'){try{applyState(m);}catch(e){console.error('同步狀態錯誤',e);status('同步資料顯示錯誤，正在重新同步…');setTimeout(()=>send(MP.conn,{type:'requestState'}),200);}}
       });
       MP.conn.on('close',()=>status('與房主的連線已中斷。'));
     });
