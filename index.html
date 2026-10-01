@@ -634,7 +634,6 @@ function runBattles(){
           renderNames();players.forEach((p,i)=>{const el=$('p'+i);if(el)el.value=p.name;});
           renderPlayers();renderFunds();addLog(`👤 ${n} 加入房間。`);
           send(c,{type:'joined',index:players.length-1,name:n});
-          send(c,{type:'state',seq:MP.stateSeq+1,players:[],deck:[],current:null,price:0,holder:-1,firstBid:false,passed:[],turn:0,round:1,log:[],gameOver:false,noBidTurns:0,autoAssigning:false,battleHTML:'',battleBtnHidden:true,battleBtnDisabled:false});
           broadcast();
           const target=+$('playerCount').value||2;
           if(players.length===target&&!gameOver){
@@ -649,7 +648,7 @@ function runBattles(){
             MP.seenActions.add(m.id);
             if(MP.seenActions.size>500)MP.seenActions.delete(MP.seenActions.values().next().value);
           }
-          if(!MP.started||m.index!==turn||!players[m.index]){send(c,{type:'state',seq:MP.stateSeq+1,...snapshot()});return;}
+          if(!MP.started||m.index!==turn||!players[m.index]){send(c,snapshot());return;}
           if(m.action==='bid'){$('addAmount').value=String(m.add);oldBid();broadcast();}
           else if(m.action==='pass'){oldPass();broadcast();}
         }
