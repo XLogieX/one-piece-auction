@@ -571,7 +571,7 @@ function runBattles(){
 \n<!-- 多人連線：房主權威同步，使用 PeerJS/WebRTC；遊戲核心規則仍由原本單機版執行。 -->
 <script>
 (function(){
-  const MP={host:false,guest:false,peer:null,conn:null,conns:[],room:'',name:'',ready:false,started:false};
+  const MP={host:false,guest:false,peer:null,conn:null,conns:[],room:'',name:'',ready:false,started:false,actionSeq:0,seenActions:new Set()};
   const $=id=>document.getElementById(id);
   const code=()=>Math.random().toString(36).slice(2,8).toUpperCase();
   function status(t){ if($('onlineStatus')) $('onlineStatus').textContent=t; }
@@ -622,6 +622,7 @@ function runBattles(){
           if(players.some(p=>p.name===n)){send(c,{type:'error',message:'這個暱稱已有人使用，請換一個。'});return;}
           players.push({name:n,money:20,chars:[]}); renderPlayers(); renderFunds(); addLog(`👤 ${n} 加入房間。`); send(c,{type:'joined',index:players.length-1,name:n}); scheduleSync();
         } else if(m.type==='action'){
+          if(m.id){ if(MP.seenActions.has(m.id)) return; MP.seenActions.add(m.id); if(MP.seenActions.size>200) MP.seenActions.delete(MP.seenActions.values().next().value); }
           if(m.index!==turn || !players[m.index]) return;
           if(m.action==='bid'){ $('addAmount').value=String(m.add); bid(); }
           else if(m.action==='pass'){ passBid(); }
@@ -649,7 +650,7 @@ function runBattles(){
     if(!/^[A-Z0-9]{6}$/.test(r))return alert('請輸入 6 碼房間代碼。');
     if(!n)return alert('請先輸入你的暱稱。');
     MP.guest=true;MP.name=n;MP.room=r;MP.peer=new Peer();roomUI();status('正在連線到房主…');
-    MP.peer.on('open',()=>{MP.conn=MP.peer.connect(r,{reliable:true});MP.conn.on('open',()=>{send(MP.conn,{type:'join',name:n});status(`已加入房間 ${r}，等待房主開始遊戲。`);});MP.conn.on('data',m=>{if(m.type==='error'){alert(m.message);return;}if(m.type==='state')applyState(m);if(m.type==='joined'){status(`已加入房間 ${r}，你的角色是 ${m.name}。`);}});MP.conn.on('close',()=>status('與房主的連線已中斷。'));});
+    MP.peer.on('open',()=>{MP.conn=MP.peer.connect(r,{reliable:false});MP.conn.on('open',()=>{send(MP.conn,{type:'join',name:n});status(`已加入房間 ${r}，等待房主開始遊戲。`);});MP.conn.on('data',m=>{if(m.type==='error'){alert(m.message);return;}if(m.type==='state')applyState(m);if(m.type==='joined'){status(`已加入房間 ${r}，你的角色是 ${m.name}。`);}});MP.conn.on('close',()=>status('與房主的連線已中斷。'));});
     MP.peer.on('error',e=>status('加入失敗：'+(e.type||e.message||'未知錯誤')));
   }
   function hostStart(){
@@ -659,9 +660,15 @@ function runBattles(){
     startGame();
     scheduleSync();
   }
-  function guestActionBid(){if(!MP.guest)return false; const add=Math.floor(Number($('addAmount').value));send(MP.conn,{type:'action',action:'bid',index:turn,add});return true;}
-  function guestActionPass(){if(!MP.guest)return false;send(MP.conn,{type:'action',action:'pass',index:turn});return true;}
+  function guestActionBid(){if(!MP.guest)return false; const add=Math.floor(Number($('addAmount').value)); return sendAction('bid',add);}
+  function guestActionPass(){if(!MP.guest)return false; return sendAction('pass',0);}
   const oldStart=startGame, oldBid=bid, oldPass=passBid, oldAward=award, oldAuto=autoAssignNext, oldFinish=finishGame, oldRun=runBattles;
+  function sendAction(action,add){
+    if(!MP.conn||!MP.conn.open)return false;
+    const id=MP.name+'-'+(++MP.actionSeq)+'-'+Date.now();
+    const msg={type:'action',action,index:turn,add:add||0,id};
+    send(MP.conn,msg); setTimeout(()=>send(MP.conn,msg),90); setTimeout(()=>send(MP.conn,msg),220); return true;
+  }
   startGame=function(){if(MP.guest)return;oldStart();scheduleSync();};
   bid=function(){if(MP.guest){guestActionBid();return;}oldBid();scheduleSync();};
   passBid=function(){if(MP.guest){guestActionPass();return;}oldPass();scheduleSync();};
