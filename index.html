@@ -569,146 +569,148 @@ function runBattles(){
 \n<!-- 多人連線：房主權威同步，使用 PeerJS/WebRTC；遊戲核心規則仍由原本單機版執行。 -->
 <script>
 (function(){
-  const MP={host:false,guest:false,peer:null,conn:null,conns:[],room:'',name:'',ready:false,started:false,actionSeq:0,seenActions:new Set()};
+  const MP={host:false,guest:false,peer:null,conn:null,conns:[],room:'',name:'',started:false,actionSeq:0,seenActions:new Set(),stateSeq:0,lastStateSeq:0};
   const $=id=>document.getElementById(id);
   const code=()=>Math.random().toString(36).slice(2,8).toUpperCase();
-  function status(t){ if($('onlineStatus')) $('onlineStatus').textContent=t; }
+  function status(t){if($('onlineStatus'))$('onlineStatus').textContent=t;}
   function roomUI(){
-    $('roomInfo').classList.toggle('hidden',!MP.room);
-    if(MP.room) $('roomCode').textContent=MP.room;
-    $('createRoomBtn').disabled=MP.host||MP.guest; $('joinRoomBtn').disabled=MP.host||MP.guest;
+    if($('roomInfo'))$('roomInfo').classList.toggle('hidden',!MP.room);
+    if(MP.room&&$('roomCode'))$('roomCode').textContent=MP.room;
+    if($('createRoomBtn'))$('createRoomBtn').disabled=MP.host||MP.guest;
+    if($('joinRoomBtn'))$('joinRoomBtn').disabled=MP.host||MP.guest;
   }
-  function names(){ return players.map(p=>p.name); }
   function snapshot(){
-    return {type:'state',players:players.map(p=>({name:p.name,money:p.money,chars:p.chars.map(c=>c.name)})),deck:deck.map(c=>c.name),current:current?current.name:null,price,holder,firstBid,passed:[...passed],turn,round,log,gameOver,noBidTurns,autoAssigning,battleHTML:$('battles')?.innerHTML||'',battleBtnHidden:$('battleBtn')?.classList.contains('hidden'),battleBtnDisabled:$('battleBtn')?.disabled};
+    return {type:'state',seq:++MP.stateSeq,players:players.map(p=>({name:p.name,money:p.money,chars:p.chars.map(c=>c.name)})),deck:deck.map(c=>c.name),current:current?current.name:null,price,holder,firstBid,passed:[...passed],turn,round,log,gameOver,noBidTurns,autoAssigning,battleHTML:$('battles')?.innerHTML||'',battleBtnHidden:$('battleBtn')?.classList.contains('hidden'),battleBtnDisabled:$('battleBtn')?.disabled};
   }
-  function send(c,msg){try{if(c&&c.open)c.send(msg)}catch(e){}}
-  function broadcast(){ if(!MP.host)return; const msg=snapshot(); MP.conns=MP.conns.filter(c=>c.open); MP.conns.forEach(c=>send(c,msg)); updateRoomPlayers(); }
-  let syncTimer=null; function scheduleSync(){ if(!MP.host)return; clearTimeout(syncTimer); syncTimer=setTimeout(broadcast,0); }
-  let syncHeartbeat=null;
-  function startSyncHeartbeat(){
-    if(syncHeartbeat) clearInterval(syncHeartbeat);
-    syncHeartbeat=setInterval(()=>{ if(MP.host && MP.started) broadcast(); },1000);
+  function send(c,m){try{if(c&&c.open)c.send(m)}catch(e){}}
+  function broadcast(){
+    if(!MP.host)return;
+    const msg=snapshot();
+    MP.conns=MP.conns.filter(c=>c.open);
+    MP.conns.forEach(c=>send(c,msg));
+    if($('roomPlayers'))$('roomPlayers').textContent=`已連線玩家：${players.length} 人`;
   }
-  function updateRoomPlayers(){
-    if(!$('roomPlayers'))return;
-    const arr=MP.host?names():[];
-    $('roomPlayers').textContent=MP.host?`已連線玩家：${players.length} 人（設定人數後等待朋友加入）`:`你已加入房間：${MP.room}`;
-  }
+  let syncTimer=null;
+  function syncNow(){if(!MP.host)return;clearTimeout(syncTimer);syncTimer=setTimeout(broadcast,0);}
+  let heartbeat=null;
+  function startHeartbeat(){clearInterval(heartbeat);heartbeat=setInterval(()=>{if(MP.host&&MP.started)broadcast();},1000);}
   function applyState(st){
+    if(!st||typeof st.seq!=='number'||st.seq<=MP.lastStateSeq)return;
+    MP.lastStateSeq=st.seq;
     players=(st.players||[]).map(p=>({name:p.name,money:p.money,chars:(p.chars||[]).map(n=>characters.find(c=>c.name===n)||{name:n,img:''})}));
     deck=(st.deck||[]).map(n=>characters.find(c=>c.name===n)).filter(Boolean);
-    current=st.current?characters.find(c=>c.name===st.current)||null:null; price=st.price||0; holder=st.holder??-1; firstBid=!!st.firstBid; passed=new Set(st.passed||[]); turn=st.turn||0; round=st.round||1; log=st.log||[]; gameOver=!!st.gameOver; noBidTurns=st.noBidTurns||0; autoAssigning=!!st.autoAssigning;
-    if(players.length){ $('setup').classList.add('hidden'); $('game').classList.remove('hidden'); renderPlayers(); renderFunds(); renderLog(); }
-    if(current&&!gameOver){ showCurrent(); } else if(gameOver){ finishGame(); }
-    if(st.battleHTML!==undefined && $('battles')) $('battles').innerHTML=st.battleHTML;
-    if($('battleBtn')){ $('battleBtn').classList.toggle('hidden',!!st.battleBtnHidden); $('battleBtn').disabled=!!st.battleBtnDisabled; }
-    status(`已連線：房主同步中｜${players.length} 人`);
+    current=st.current?characters.find(c=>c.name===st.current)||null:null;
+    price=Number(st.price)||0; holder=st.holder??-1; firstBid=!!st.firstBid; passed=new Set(st.passed||[]);
+    turn=Number(st.turn)||0; round=Number(st.round)||1; log=st.log||[]; gameOver=!!st.gameOver; noBidTurns=Number(st.noBidTurns)||0; autoAssigning=!!st.autoAssigning;
+    if(players.length){
+      $('setup')?.classList.add('hidden');
+      $('game')?.classList.remove('hidden');
+      renderPlayers();renderFunds();renderLog();
+      if(current&&!gameOver)showCurrent();
+      else if(gameOver)finishGame();
+    }
+    if(st.battleHTML!==undefined&&$('battles'))$('battles').innerHTML=st.battleHTML;
+    if($('battleBtn')){$('battleBtn').classList.toggle('hidden',!!st.battleBtnHidden);$('battleBtn').disabled=!!st.battleBtnDisabled;}
+    status(`已同步：${players.length} 人｜第 ${round} 回合｜${current?current.name:'等待開始'}`);
   }
   function makePeerHost(){
-    if(typeof Peer==='undefined'){status('無法載入連線元件，請確認網路正常。');return;}
-    MP.host=true; MP.guest=false; MP.room=code();
+    if(typeof Peer==='undefined'){status('無法載入連線元件。');return;}
+    MP.host=true;MP.guest=false;MP.room=code();MP.stateSeq=0;
     players=[];
     const hostName=(($('onlineName')?.value||'').trim().slice(0,12))||'玩家A';
     players.push({name:hostName,money:20,chars:[]});
-    renderNames();
-    if($('p0')) $('p0').value=hostName;
-    renderPlayers(); renderFunds();
+    renderNames();if($('p0'))$('p0').value=hostName;renderPlayers();renderFunds();
     MP.peer=new Peer(MP.room);
-    MP.peer.on('open',id=>{MP.room=id;roomUI();status(`房間已建立：${id}。把房間代碼給朋友即可加入。`);});
+    MP.peer.on('open',id=>{MP.room=id;roomUI();status(`房間已建立：${id}，等待玩家加入。`);});
     MP.peer.on('connection',c=>{
       MP.conns.push(c);
-      c.on('open',()=>{ send(c,{type:'hello',room:MP.room}); send(c,snapshot()); updateRoomPlayers(); });
-      c.on('data',m=>{ if(m.type==='join'){
+      c.on('open',()=>{status('有玩家正在加入…');});
+      c.on('data',m=>{
+        if(m.type==='join'){
           const n=(m.name||'玩家').trim().slice(0,12)||'玩家';
-          if(players.length>=8){send(c,{type:'error',message:'房間已滿（最多 8 人）。'});return;}
+          if(players.length>=8){send(c,{type:'error',message:'房間已滿。'});return;}
           if(players.some(p=>p.name===n)){send(c,{type:'error',message:'這個暱稱已有人使用，請換一個。'});return;}
           players.push({name:n,money:20,chars:[]});
-          renderNames();
-          players.forEach((p,i)=>{ const el=$('p'+i); if(el) el.value=p.name; });
-          renderPlayers(); renderFunds();
-          addLog(`👤 ${n} 加入房間。`);
+          renderNames();players.forEach((p,i)=>{const el=$('p'+i);if(el)el.value=p.name;});
+          renderPlayers();renderFunds();addLog(`👤 ${n} 加入房間。`);
           send(c,{type:'joined',index:players.length-1,name:n});
+          send(c,{type:'state',seq:MP.stateSeq+1,players:[],deck:[],current:null,price:0,holder:-1,firstBid:false,passed:[],turn:0,round:1,log:[],gameOver:false,noBidTurns:0,autoAssigning:false,battleHTML:'',battleBtnHidden:true,battleBtnDisabled:false});
+          broadcast();
           const target=+$('playerCount').value||2;
-          if(players.length===target && !gameOver){
+          if(players.length===target&&!gameOver){
             status(`已湊齊 ${target} 人，正在自動開始遊戲…`);
-            setTimeout(()=>{ if(MP.host && players.length===target && !current) hostStart(); },120);
-          } else {
-            status(`玩家 ${n} 已加入（${players.length}/${target}），等待其他玩家加入。`);
-            scheduleSync();
+            setTimeout(()=>{if(MP.host&&players.length===target&&!current)hostStart();},200);
+          }else status(`玩家 ${n} 已加入（${players.length}/${target}），等待其他玩家加入。`);
+        }else if(m.type==='requestState'){
+          broadcast();
+        }else if(m.type==='action'){
+          if(m.id){
+            if(MP.seenActions.has(m.id))return;
+            MP.seenActions.add(m.id);
+            if(MP.seenActions.size>500)MP.seenActions.delete(MP.seenActions.values().next().value);
           }
-        } else if(m.type==='requestState'){ send(c,snapshot()); return;
-        } else if(m.type==='action'){
-          if(m.id){ if(MP.seenActions.has(m.id)) return; MP.seenActions.add(m.id); if(MP.seenActions.size>200) MP.seenActions.delete(MP.seenActions.values().next().value); }
-          if(m.index!==turn || !players[m.index]) return;
-          if(m.action==='bid'){ $('addAmount').value=String(m.add); bid(); }
-          else if(m.action==='pass'){ passBid(); }
-        } else if(m.type==='start'){
-          if(players.length>=2 && !gameOver) startGame();
+          if(!MP.started||m.index!==turn||!players[m.index]){send(c,{type:'state',seq:MP.stateSeq+1,...snapshot()});return;}
+          if(m.action==='bid'){$('addAmount').value=String(m.add);oldBid();broadcast();}
+          else if(m.action==='pass'){oldPass();broadcast();}
         }
       });
       c.on('close',()=>{MP.conns=MP.conns.filter(x=>x!==c);});
     });
-    MP.peer.on('error',e=>{
-      const t=e.type||'unknown';
-      status('房間連線錯誤：'+t+(e.message?'｜'+e.message:''));
-      if(t==='unavailable-id'){
-        status('房間代碼剛好被使用，正在重新產生…');
-        try{MP.peer.destroy();}catch(_){}
-        MP.host=false; MP.room='';
-        setTimeout(makePeerHost,200);
-      }
-    });
+    MP.peer.on('error',e=>status('房間連線錯誤：'+(e.type||e.message||'未知錯誤')));
     roomUI();
   }
   function joinRoom(){
-    if(typeof Peer==='undefined'){status('無法載入連線元件，請確認網路正常。');return;}
-    const r=($('joinRoomInput').value||'').trim().toUpperCase(); const n=($('onlineName').value||'').trim();
+    if(typeof Peer==='undefined'){status('無法載入連線元件。');return;}
+    const r=($('joinRoomInput').value||'').trim().toUpperCase(),n=($('onlineName').value||'').trim();
     if(!/^[A-Z0-9]{6}$/.test(r))return alert('請輸入 6 碼房間代碼。');
-    if(!n)return alert('請先輸入你的暱稱。');
+    if(!n)return alert('請先輸入暱稱。');
     MP.guest=true;MP.name=n;MP.room=r;MP.peer=new Peer();roomUI();status('正在連線到房主…');
-    MP.peer.on('open',()=>{MP.conn=MP.peer.connect(r,{reliable:true});MP.conn.on('open',()=>{send(MP.conn,{type:'join',name:n});send(MP.conn,{type:'requestState'});status(`已加入房間 [object Object]，等待房主開始遊戲。`);});MP.conn.on('data',m=>{if(m.type==='error'){alert(m.message);return;}if(m.type==='state')applyState(m);if(m.type==='joined'){status(`已加入房間 ${r}，你的角色是 ${m.name}。`);}});MP.conn.on('close',()=>status('與房主的連線已中斷。'));});
+    MP.peer.on('open',()=>{
+      MP.conn=MP.peer.connect(r,{reliable:true});
+      MP.conn.on('open',()=>{send(MP.conn,{type:'join',name:n});status(`已加入房間 ${r}，等待正式同步。`);});
+      MP.conn.on('data',m=>{
+        if(m.type==='error'){alert(m.message);return;}
+        if(m.type==='joined'){status(`已加入房間 ${r}，你的角色是 ${m.name}。`);return;}
+        if(m.type==='state')applyState(m);
+      });
+      MP.conn.on('close',()=>status('與房主的連線已中斷。'));
+    });
     MP.peer.on('error',e=>status('加入失敗：'+(e.type||e.message||'未知錯誤')));
   }
   function hostStart(){
-    if(!MP.host){return;}
-    const n=+($('playerCount').value||2);
-    if(players.length!==n){alert(`目前已加入 ${players.length} 人，請等到 ${n} 人全部加入後再開始。`);return;}
-    startGame();
-    scheduleSync();
+    if(!MP.host)return;
+    const n=+$('playerCount').value||2;
+    if(players.length!==n){alert(`目前已加入 ${players.length} 人，請等到 ${n} 人全部加入。`);return;}
+    oldStart();MP.started=true;broadcast();startHeartbeat();
   }
-  function guestActionBid(){if(!MP.guest)return false; const add=Math.floor(Number($('addAmount').value)); return sendAction('bid',add);}
-  function guestActionPass(){if(!MP.guest)return false; return sendAction('pass',0);}
-  const oldStart=startGame, oldBid=bid, oldPass=passBid, oldAward=award, oldAuto=autoAssignNext, oldFinish=finishGame, oldRun=runBattles;
   function sendAction(action,add){
     if(!MP.conn||!MP.conn.open)return false;
-    const id=MP.name+'-'+(++MP.actionSeq)+'-'+Date.now();
-    const msg={type:'action',action,index:turn,add:add||0,id};
-    send(MP.conn,msg); setTimeout(()=>send(MP.conn,msg),90); setTimeout(()=>send(MP.conn,msg),220); return true;
+    const msg={type:'action',action,index:turn,add:add||0,id:MP.name+'-'+(++MP.actionSeq)+'-'+Date.now()};
+    send(MP.conn,msg);return true;
   }
-  startGame=function(){if(MP.guest)return;oldStart();MP.started=true;scheduleSync();startSyncHeartbeat();};
-  bid=function(){if(MP.guest){guestActionBid();return;}oldBid();scheduleSync();};
-  passBid=function(){if(MP.guest){guestActionPass();return;}oldPass();scheduleSync();};
-  award=function(){oldAward.apply(this,arguments);scheduleSync();};
-  autoAssignNext=function(){oldAuto.apply(this,arguments);scheduleSync();};
-  finishGame=function(){oldFinish.apply(this,arguments);scheduleSync();};
-  runBattles=function(){if(MP.guest){status('由房主主持戰鬥分析，請稍候。');return;}oldRun();scheduleSync();};
+  const oldStart=startGame,oldBid=bid,oldPass=passBid,oldAward=award,oldAuto=autoAssignNext,oldFinish=finishGame,oldRun=runBattles;
+  startGame=function(){if(MP.guest)return;oldStart();MP.started=true;broadcast();startHeartbeat();};
+  bid=function(){if(MP.guest){sendAction('bid',Math.floor(Number($('addAmount').value)));return;}oldBid();broadcast();};
+  passBid=function(){if(MP.guest){sendAction('pass',0);return;}oldPass();broadcast();};
+  award=function(){oldAward.apply(this,arguments);if(MP.host)broadcast();};
+  autoAssignNext=function(){oldAuto.apply(this,arguments);if(MP.host)broadcast();};
+  finishGame=function(){oldFinish.apply(this,arguments);if(MP.host)broadcast();};
+  runBattles=function(){if(MP.guest){status('由房主主持戰鬥分析，請稍候。');return;}oldRun();broadcast();};
   document.addEventListener('DOMContentLoaded',()=>{
-    const createBtn=$('createRoomBtn'), joinBtn=$('joinRoomBtn');
-    if(createBtn) createBtn.addEventListener('click',makePeerHost);
-    if(joinBtn) joinBtn.addEventListener('click',joinRoom);
-    const copyBtn=$('copyRoomBtn');
-    if(copyBtn) copyBtn.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(MP.room);status('房間代碼已複製。')}catch(e){alert('房間代碼：'+MP.room)}});
-    $('startBtn').addEventListener('click',()=>{
-      if(MP.host){ hostStart(); }
-      else if(MP.guest){ status('遊戲由房主控制，請等待房主自動開始。'); }
-      else { oldStart(); }
-    });
-    if(location.search.match(/[?&]room=/i)){ $('joinRoomInput').value=new URLSearchParams(location.search).get('room')||''; }
+    $('createRoomBtn')?.addEventListener('click',makePeerHost);
+    $('joinRoomBtn')?.addEventListener('click',joinRoom);
+    $('copyRoomBtn')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(MP.room);status('房間代碼已複製。')}catch(e){alert('房間代碼：'+MP.room)}});
+    $('startBtn')?.addEventListener('click',()=>{if(MP.host)hostStart();else if(MP.guest)status('遊戲由房主控制，請等待房主開始。');else oldStart();});
   });
-  // 遠端玩家不直接執行本機競標邏輯；只把按鈕送回房主。
-  const oldShow=showCurrent; showCurrent=function(){oldShow(); if(MP.guest){const myTurn=players[turn]&&players[turn].name===MP.name; $('bidBtn').disabled=!myTurn||$('bidBtn').disabled; $('passBtn').disabled=!myTurn||$('passBtn').disabled; $('addAmount').disabled=!myTurn||$('addAmount').disabled;}};
+  const oldShow=showCurrent;
+  showCurrent=function(){
+    oldShow();
+    if(MP.guest){
+      const myTurn=players[turn]&&players[turn].name===MP.name;
+      $('bidBtn').disabled=!myTurn||$('bidBtn').disabled;
+      $('passBtn').disabled=!myTurn||$('passBtn').disabled;
+      $('addAmount').disabled=!myTurn||$('addAmount').disabled;
+    }
+  };
 })();
 </script>
-</body>
-</html>
