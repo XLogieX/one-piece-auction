@@ -199,7 +199,7 @@ function renderNames(){
 document.getElementById('playerCount').addEventListener('change', renderNames);
 document.getElementById('bidBtn').addEventListener('click', ()=>bid());
 document.getElementById('passBtn').addEventListener('click', ()=>passBid());
-document.getElementById('battleBtn').addEventListener('click', runBattles);
+document.getElementById('battleBtn').addEventListener('click', ()=>runBattles());
 renderNames();
 document.getElementById('startBtn').addEventListener('click', ()=>startGame());
 
