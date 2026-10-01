@@ -39,6 +39,25 @@ button:hover{filter:brightness(1.12)}button.primary{background:linear-gradient(1
 <h1>🏴‍☠️ ONE PIECE 角色競標大戰</h1>
 <div class="sub">2–8 人・每人 20 元・每人最終 5 名角色・同一局不重複角色・照片使用你提供的 81 名角色資料</div>
 
+<section id="onlinePanel" class="panel">
+<h2>🌐 多人連線</h2>
+<div class="row">
+  <input id="onlineName" maxlength="12" placeholder="你的暱稱" value="玩家A">
+  <button id="createRoomBtn" class="primary">建立房間</button>
+  <input id="joinRoomInput" maxlength="6" placeholder="6 碼房間代碼">
+  <button id="joinRoomBtn">加入房間</button>
+</div>
+<div id="onlineStatus" class="hint" style="margin-top:10px">尚未連線</div>
+<div id="roomInfo" class="hidden" style="margin-top:10px">
+  <div class="roomCodeBox">
+    <span>房間代碼：</span><b id="roomCode"></b>
+    <button id="copyRoomBtn">複製代碼</button>
+  </div>
+  <div id="roomPlayers" class="hint" style="margin-top:8px"></div>
+</div>
+<p class="note" style="margin-top:10px">房主建立房間後，把 6 碼房間代碼給其他玩家。多人連線使用 PeerJS/WebRTC，需要網路連線。</p>
+</section>
+
 <section id="setup" class="panel">
 <h2>遊戲設定</h2>
 <div class="row"><label>玩家人數：</label><select id="playerCount"><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
@@ -59,7 +78,7 @@ button:hover{filter:brightness(1.12)}button.primary{background:linear-gradient(1
 <div class="panel auctionGrid">
 <div>
 <div class="charHero"><img id="heroImg" alt=""><div id="charName" class="charName"></div></div>
-<div class="hint">角色照片取自你提供的 picture.zip，已直接嵌入本 HTML；開啟檔案即可顯示，不需要連線找圖片。</div>
+<div class="hint">角色照片取自你提供的 picture.zip，已拆成 assets/images/ 獨立檔案；網站會透過相對路徑載入。</div>
 </div>
 <div>
 <h2 style="margin-top:0">競標</h2>
@@ -612,7 +631,16 @@ function runBattles(){
       });
       c.on('close',()=>{MP.conns=MP.conns.filter(x=>x!==c);});
     });
-    MP.peer.on('error',e=>status('房間連線錯誤：'+(e.type||e.message||'未知錯誤')));
+    MP.peer.on('error',e=>{
+      const t=e.type||'unknown';
+      status('房間連線錯誤：'+t+(e.message?'｜'+e.message:''));
+      if(t==='unavailable-id'){
+        status('房間代碼剛好被使用，正在重新產生…');
+        try{MP.peer.destroy();}catch(_){}
+        MP.host=false; MP.room='';
+        setTimeout(makePeerHost,200);
+      }
+    });
     roomUI();
   }
   function joinRoom(){
@@ -642,8 +670,11 @@ function runBattles(){
   finishGame=function(){oldFinish.apply(this,arguments);scheduleSync();};
   runBattles=function(){if(MP.guest){status('由房主主持戰鬥分析，請稍候。');return;}oldRun();scheduleSync();};
   document.addEventListener('DOMContentLoaded',()=>{
-    $('createRoomBtn').addEventListener('click',makePeerHost); $('joinRoomBtn').addEventListener('click',joinRoom);
-    $('copyRoomBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(MP.room);status('房間代碼已複製。')}catch(e){alert('房間代碼：'+MP.room)}});
+    const createBtn=$('createRoomBtn'), joinBtn=$('joinRoomBtn');
+    if(createBtn) createBtn.addEventListener('click',makePeerHost);
+    if(joinBtn) joinBtn.addEventListener('click',joinRoom);
+    const copyBtn=$('copyRoomBtn');
+    if(copyBtn) copyBtn.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(MP.room);status('房間代碼已複製。')}catch(e){alert('房間代碼：'+MP.room)}});
     $('startBtn').addEventListener('click',()=>{if(MP.host)hostStart();});
     if(location.search.match(/[?&]room=/i)){ $('joinRoomInput').value=new URLSearchParams(location.search).get('room')||''; }
   });
