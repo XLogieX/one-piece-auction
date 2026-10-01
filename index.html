@@ -618,7 +618,20 @@ function runBattles(){
           const n=(m.name||'玩家').trim().slice(0,12)||'玩家';
           if(players.length>=8){send(c,{type:'error',message:'房間已滿（最多 8 人）。'});return;}
           if(players.some(p=>p.name===n)){send(c,{type:'error',message:'這個暱稱已有人使用，請換一個。'});return;}
-          players.push({name:n,money:20,chars:[]}); renderPlayers(); renderFunds(); addLog(`👤 ${n} 加入房間。`); send(c,{type:'joined',index:players.length-1,name:n}); scheduleSync();
+          players.push({name:n,money:20,chars:[]});
+          renderNames();
+          players.forEach((p,i)=>{ const el=$('p'+i); if(el) el.value=p.name; });
+          renderPlayers(); renderFunds();
+          addLog(`👤 ${n} 加入房間。`);
+          send(c,{type:'joined',index:players.length-1,name:n});
+          const target=+$('playerCount').value||2;
+          if(players.length===target && !gameOver){
+            status(`已湊齊 ${target} 人，正在自動開始遊戲…`);
+            setTimeout(()=>{ if(MP.host && players.length===target && !current) hostStart(); },120);
+          } else {
+            status(`玩家 ${n} 已加入（${players.length}/${target}），等待其他玩家加入。`);
+            scheduleSync();
+          }
         } else if(m.type==='action'){
           if(m.id){ if(MP.seenActions.has(m.id)) return; MP.seenActions.add(m.id); if(MP.seenActions.size>200) MP.seenActions.delete(MP.seenActions.values().next().value); }
           if(m.index!==turn || !players[m.index]) return;
@@ -680,7 +693,11 @@ function runBattles(){
     if(joinBtn) joinBtn.addEventListener('click',joinRoom);
     const copyBtn=$('copyRoomBtn');
     if(copyBtn) copyBtn.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(MP.room);status('房間代碼已複製。')}catch(e){alert('房間代碼：'+MP.room)}});
-    $('startBtn').addEventListener('click',()=>{if(MP.host)hostStart();});
+    $('startBtn').addEventListener('click',()=>{
+      if(MP.host){ hostStart(); }
+      else if(MP.guest){ status('遊戲由房主控制，請等待房主自動開始。'); }
+      else { oldStart(); }
+    });
     if(location.search.match(/[?&]room=/i)){ $('joinRoomInput').value=new URLSearchParams(location.search).get('room')||''; }
   });
   // 遠端玩家不直接執行本機競標邏輯；只把按鈕送回房主。
