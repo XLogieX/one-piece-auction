@@ -580,7 +580,7 @@ function runBattles(){
     if($('joinRoomBtn'))$('joinRoomBtn').disabled=MP.host||MP.guest;
   }
   function snapshot(){
-    return {type:'state',seq:++MP.stateSeq,players:players.map(p=>({name:p.name,money:p.money,chars:p.chars.map(c=>c.name)})),deck:deck.map(c=>c.name),current:current?current.name:null,price,holder,firstBid,passed:[...passed],turn,round,log,gameOver,noBidTurns,autoAssigning,battleHTML:$('battles')?.innerHTML||'',battleBtnHidden:$('battleBtn')?.classList.contains('hidden'),battleBtnDisabled:$('battleBtn')?.disabled};
+    return {type:'state',seq:++MP.stateSeq,started:MP.started,players:players.map(p=>({name:p.name,money:p.money,chars:p.chars.map(c=>c.name)})),deck:deck.map(c=>c.name),current:current?current.name:null,price,holder,firstBid,passed:[...passed],turn,round,log,gameOver,noBidTurns,autoAssigning,battleHTML:$('battles')?.innerHTML||'',battleBtnHidden:$('battleBtn')?.classList.contains('hidden'),battleBtnDisabled:$('battleBtn')?.disabled};
   }
   function send(c,m){try{if(c&&c.open)c.send(m)}catch(e){}}
   function broadcast(){
@@ -602,12 +602,19 @@ function runBattles(){
     current=st.current?characters.find(c=>c.name===st.current)||null:null;
     price=Number(st.price)||0; holder=st.holder??-1; firstBid=!!st.firstBid; passed=new Set(st.passed||[]);
     turn=Number(st.turn)||0; round=Number(st.round)||1; log=st.log||[]; gameOver=!!st.gameOver; noBidTurns=Number(st.noBidTurns)||0; autoAssigning=!!st.autoAssigning;
-    if(players.length){
+    MP.started=!!st.started;
+    if(players.length&&MP.started){
       $('setup')?.classList.add('hidden');
       $('game')?.classList.remove('hidden');
       renderPlayers();renderFunds();renderLog();
       if(current&&!gameOver)showCurrent();
       else if(gameOver)finishGame();
+    }else if(players.length){
+      $('setup')?.classList.remove('hidden');
+      $('game')?.classList.add('hidden');
+      renderNames();
+      players.forEach((p,i)=>{const el=$('p'+i);if(el)el.value=p.name;});
+      status(`已加入房間，等待房主開始…（${players.length} 人）`);
     }
     if(st.battleHTML!==undefined&&$('battles'))$('battles').innerHTML=st.battleHTML;
     if($('battleBtn')){$('battleBtn').classList.toggle('hidden',!!st.battleBtnHidden);$('battleBtn').disabled=!!st.battleBtnDisabled;}
@@ -634,12 +641,14 @@ function runBattles(){
           renderNames();players.forEach((p,i)=>{const el=$('p'+i);if(el)el.value=p.name;});
           renderPlayers();renderFunds();addLog(`👤 ${n} 加入房間。`);
           send(c,{type:'joined',index:players.length-1,name:n});
-          broadcast();
           const target=+$('playerCount').value||2;
-          if(players.length===target&&!gameOver){
-            status(`已湊齊 ${target} 人，正在自動開始遊戲…`);
-            setTimeout(()=>{if(MP.host&&players.length===target&&!current)hostStart();},200);
-          }else status(`玩家 ${n} 已加入（${players.length}/${target}），等待其他玩家加入。`);
+          if(players.length===target&&!MP.started&&!gameOver){
+            status(`已湊齊 ${target} 人，立即開始遊戲…`);
+            hostStart();
+          }else{
+            broadcast();
+            status(`玩家 ${n} 已加入（${players.length}/${target}），等待其他玩家加入。`);
+          }
         }else if(m.type==='requestState'){
           broadcast();
         }else if(m.type==='action'){
@@ -675,12 +684,16 @@ function runBattles(){
       MP.conn.on('close',()=>status('與房主的連線已中斷。'));
     });
     MP.peer.on('error',e=>status('加入失敗：'+(e.type||e.message||'未知錯誤')));
+    MP.peer.on('disconnected',()=>{if(MP.guest)status('與房主的連線中斷，正在等待重新連線…');});
   }
   function hostStart(){
     if(!MP.host)return;
     const n=+$('playerCount').value||2;
     if(players.length!==n){alert(`目前已加入 ${players.length} 人，請等到 ${n} 人全部加入。`);return;}
-    oldStart();MP.started=true;broadcast();startHeartbeat();
+    oldStart();
+    MP.started=true;
+    broadcast();
+    startHeartbeat();
   }
   function sendAction(action,add){
     if(!MP.conn||!MP.conn.open)return false;
