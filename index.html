@@ -249,7 +249,13 @@ function showCurrent(){
   document.getElementById('addAmount').disabled=autoAssigning || players[turn].chars.length>=5 || players[turn].money<=0;
   document.getElementById('bidBtn').disabled=autoAssigning || players[turn].chars.length>=5 || players[turn].money<=0;
   document.getElementById('passBtn').disabled=autoAssigning || players[turn].chars.length>=5;
-  document.getElementById('addAmount').value=(!firstBid&&price===0)?1:Math.min(0,max);
+  // 不要在每次同步/心跳時把玩家正在輸入的加價重設成 0。
+  // 只有在欄位沒有值或超出目前可用資金時才修正；第一口出價則至少預設 1。
+  const addInput=document.getElementById('addAmount');
+  const minBid=(!firstBid&&price===0)?1:0;
+  const currentInput=Number(addInput.value);
+  if(!Number.isFinite(currentInput)||addInput.value===''||currentInput<minBid) addInput.value=String(Math.min(minBid,max));
+  else if(currentInput>max) addInput.value=String(max);
   document.getElementById('ruleHint').textContent=autoAssigning?`目前為兩人局的剩餘角色展示：${players[turn].name} 已自動取得這隻角色，不需支付資金。`:players[turn].chars.length>=5?'此玩家已經 5/5，不能出價；系統會讓其他未滿 5 名玩家繼續競標。':players[turn].money<=0?'此玩家剩餘 0 元，可以 PASS；PASS 後由下一位玩家繼續。':((!firstBid&&price===0)?'你是第一個出價者，至少要加 1 元。':'你可以加 0 元跟價；目前持有人不能對自己 +0。');
 }
 function renderPlayers(){
